@@ -3,6 +3,8 @@ import gradio as gr
 import pandas as pd
 import numpy as np
 
+from ui_sliders import LAB_VARIABLES, build_lab_sliders
+
 # === Codebook: label + choices (value codes match NHANES) ===
 # Notes:
 # - Most disease items are 1=Yes, 2=No (default to No).
@@ -201,31 +203,72 @@ def _collect_values(inputs: dict):
 
 def launch_form():
     with gr.Blocks() as demo:
-        comps = build_questionnaire_ui()
+        # --- UI layout: tabs for readability ---
+        with gr.Tabs():
+            with gr.Tab("Questionnaire"):
+                q_comps = build_questionnaire_ui()   # returns dict with a "submit" button
+            with gr.Tab("Labs"):
+                lab_comps = build_lab_sliders()      # dict: code -> gr.Slider
 
-        out_df = gr.Dataframe(label="Questionnaire row", interactive=False)
+        # --- Outputs (add an optional labs echo if you want) ---
+        out_df = gr.Dataframe(label="Questionnaire row (+ optional labs)", interactive=False)
         out_fs = gr.JSON(label="fs-scores")
+        out_labs = gr.JSON(label="Labs (ordered dict)", visible=False)  # flip to True to debug
+
+        # Build stable input lists so the click wiring is explicit
+        # (avoid relying on dict iteration order)
+        q_keys_in_order = [k for k in q_comps.keys() if k != "submit"]
+        q_inputs_in_order = [q_comps[k] for k in q_keys_in_order]
+        lab_inputs_in_order = [lab_comps[c] for c in LAB_VARIABLES]
 
         def on_submit(*vals):
-            keys = [k for k in comps.keys() if k != "submit"]
-            inp_map = {k:v for k,v in zip(keys, vals)}
-            df = _collect_values(inp_map)
+            """
+            vals = [questionnaire..., labs...], in the order we passed to `inputs=...`.
+            """
+            n_q = len(q_inputs_in_order)
+            q_vals = vals[:n_q]
+            lab_vals = vals[n_q:]  # len == len(LAB_VARIABLES)
 
-            # compute fs-scores
+            # 1) Questionnaire → DataFrame row (your original behavior)
+            inp_map = {k: v for k, v in zip(q_keys_in_order, q_vals)}
+            df = _collect_values(inp_map)  # must return a 1-row DataFrame or Series compatible with your scoring
+
+            # 2) Optional: attach labs to df (prefixed) so you can persist or feed into inference together
+            lab_dict = dict(zip(LAB_VARIABLES, lab_vals))
+            if isinstance(df, pd.DataFrame):
+                for k, v in lab_dict.items():
+                    df[f"lab__{k}"] = v
+            else:
+                # if _collect_values returns a Series, coerce to DataFrame
+                df = pd.DataFrame([df.to_dict()])
+                for k, v in lab_dict.items():
+                    df[f"lab__{k}"] = v
+
+            # 3) Compute fs-scores (as before) from questionnaire-only columns
             fs1 = fs1Score_from_df(df)
             fs2 = fs2Score_from_df(df)
             fs3 = fs3Score_from_df(df)
-            scores = {"fs1Score": float(fs1.iloc[0]), "fs2Score": float(fs2.iloc[0]), "fs3Score": float(fs3.iloc[0])}
-            # attach into df if you want
-            show = df.copy()
-            show["fs1Score"] = scores["fs1Score"]; show["fs2Score"] = scores["fs2Score"]; show["fs3Score"] = scores["fs3Score"]
-            return show, scores
+            scores = {
+                "fs1Score": float(fs1.iloc[0]),
+                "fs2Score": float(fs2.iloc[0]),
+                "fs3Score": float(fs3.iloc[0]),
+            }
 
-        comps["submit"].click(
+            # 4) Display
+            show = df.copy()
+            show["fs1Score"] = scores["fs1Score"]
+            show["fs2Score"] = scores["fs2Score"]
+            show["fs3Score"] = scores["fs3Score"]
+
+            return show, scores, lab_dict  # lab_dict is just for debugging/inspection
+
+        # Wire the click with explicit ordering of inputs
+        q_comps["submit"].click(
             on_submit,
-            inputs=[v for k,v in comps.items() if k != "submit"],
-            outputs=[out_df, out_fs]
+            inputs=q_inputs_in_order + lab_inputs_in_order,
+            outputs=[out_df, out_fs, out_labs],
         )
+
     return demo
 
 # If running as a script:
