@@ -2,8 +2,13 @@
 import gradio as gr
 import pandas as pd
 import numpy as np
+import joblib
+import plotly.express as px
+import plotly.io as pio
 
+from src import *
 from ui_sliders import LAB_VARIABLES, build_lab_sliders
+
 
 # === Codebook: label + choices (value codes match NHANES) ===
 # Notes:
@@ -12,6 +17,41 @@ from ui_sliders import LAB_VARIABLES, build_lab_sliders
 # - HUQ010: 1=Excellent, 2=Very good, 3=Good, 4=Fair, 5=Poor (fs2 uses Fair/Poor).
 # - HUQ020: 1=Better, 2=Worse, 3=About the same.
 # - HUQ050: numeric count (77/99 treated as 0 in fs3).
+
+paraFile = "paraInit.csv"
+paras = pd.read_csv(paraFile, sep=",", header=0)
+useDerived = paras.loc[paras["pName"] == "derivedFeatFlag", "pValue"].values[0]
+
+codeBookFile = "codebook_linAge2.csv"
+codeBook = pd.read_csv(codeBookFile)
+
+incList = markIncsFromCodeBook(codeBook)
+
+boxCox_lam = pd.read_csv("logNoLog.csv").iloc[1:2, :]
+
+
+dataMat_trans = pd.read_csv('artifacts/dataMat_trans.csv')
+qDataMat = pd.read_csv('artifacts/qDataMat.csv')
+
+vMatDat99_F = pd.read_csv("vMatDat99_F_pre.csv").values
+vMatDat99_M = pd.read_csv("vMatDat99_M_pre.csv").values
+
+dataFileName = "mergedDataNHANES9902.csv"
+masterData = pd.read_csv(dataFileName)
+dataMat = dropCols(masterData, incList) 
+qDataMat = qDataMatGen(masterData, incList)
+
+coxCovsTrainM = pd.read_csv('artifacts/coxCovsTrainM.csv')
+coxCovsTrainF = pd.read_csv('artifacts/coxCovsTrainF.csv')
+
+# Load
+coxModelF = joblib.load("artifacts/cox_full_F.joblib")
+nullModelF = joblib.load("artifacts/cox_null_F.joblib")
+
+coxModelM = joblib.load("artifacts/cox_full_M.joblib")
+nullModelM = joblib.load("artifacts/cox_null_M.joblib")
+
+
 CODEBOOK = {
     # demographics (not used in fs-scores, but useful to carry along)
     "SEQN": {"label": "Participant ID (SEQN)", "type": "number", "min": 1, "max": 999999, "value": 1},
@@ -56,6 +96,171 @@ CODEBOOK = {
     # healthcare utilization (fs3)
     "HUQ050": {"label": "Times received healthcare (past 12 months)", "type": "number", "min": 0, "max": 99, "value": 0},
 }
+
+feature_names = ['BPXPLS', 'BPXSAR', 'BPXDAR', 'BMXBMI', 'URXUMASI', 'URXUCRSI',
+       'LBDIRNSI', 'LBDTIBSI', 'LBXPCT', 'LBDFERSI', 'LBDFOLSI', 'LBDB12SI',
+       'LBXCOT', 'LBXWBCSI', 'LBXLYPCT', 'LBXMOPCT', 'LBXNEPCT', 'LBXEOPCT',
+       'LBXBAPCT', 'LBDLYMNO', 'LBDMONO', 'LBDNENO', 'LBDEONO', 'LBDBANO',
+       'LBXRBCSI', 'LBXHGB', 'LBXHCT', 'LBXMCVSI', 'LBXMCHSI', 'LBXMC',
+       'LBXRDW', 'LBXPLTSI', 'LBXMPSI', 'LBXCRP', 'LBXGH', 'SSBNP', 'LBDSALSI',
+       'LBXSATSI', 'LBXSASSI', 'LBXSAPSI', 'LBDSBUSI', 'LBDSCASI', 'LBXSC3SI',
+       'LBDSGLSI', 'LBXSLDSI', 'LBDSPHSI', 'LBDSTBSI', 'LBDSTPSI', 'LBDSUASI',
+       'LBDSCRSI', 'LBXSNASI', 'LBXSKSI', 'LBXSCLSI', 'LBDSGBSI', 'fs1Score',
+       'fs2Score', 'fs3Score', 'LDLV', 'crAlbRat']
+
+nhanes_desc = {
+  # Vitals / anthropometry
+  "BPXPLS": "Pulse rate (beats/min, 60-sec pulse).",   # CDC BPX doc
+  "BPXSAR": "Systolic blood pressure — average reported to examinee (mmHg).",
+  "BPXDAR": "Diastolic blood pressure — average reported to examinee (mmHg).",
+  "BMXBMI": "Body mass index (kg/m²).",
+
+  # Kidney (urine)
+  "URXUMASI": "Urine albumin (microalbumin), SI units (e.g., mg/L→mg/L; often used for UACR).",
+  "URXUCRSI": "Urine creatinine, SI units (mmol/L).",
+
+  # Iron panel
+  "LBDIRNSI": "Serum iron (µmol/L).",
+  "LBDTIBSI": "Total iron binding capacity, TIBC (µmol/L).",
+  "LBXPCT":   "Transferrin saturation (%) = (serum iron / TIBC)×100.",
+  "LBDFERSI": "Ferritin (µg/L).",
+
+  # Folate / B12 / cotinine
+  "LBDFOLSI": "Serum folate (nmol/L).",
+  "LBDB12SI": "Vitamin B12 (pmol/L).",
+  "LBXCOT":   "Cotinine (ng/mL)—tobacco exposure marker.",
+
+  # CBC (white cells)
+  "LBXWBCSI": "White blood cell count (×10⁹/L).",
+  "LBXLYPCT": "Lymphocytes (%).",
+  "LBXMOPCT": "Monocytes (%).",
+  "LBXNEPCT": "Neutrophils (%).",
+  "LBXEOPCT": "Eosinophils (%).",
+  "LBXBAPCT": "Basophils (%).",
+  "LBDLYMNO": "Lymphocytes (×10⁹/L).",
+  "LBDMONO":  "Monocytes (×10⁹/L).",
+  "LBDNENO":  "Neutrophils (×10⁹/L).",
+  "LBDEONO":  "Eosinophils (×10⁹/L).",
+  "LBDBANO":  "Basophils (×10⁹/L).",
+
+  # CBC (red cells / platelets)
+  "LBXRBCSI": "Red blood cell count (×10¹²/L).",
+  "LBXHGB":   "Hemoglobin (g/dL).",
+  "LBXHCT":   "Hematocrit (%).",
+  "LBXMCVSI": "Mean corpuscular volume, MCV (fL).",
+  "LBXMCHSI": "Mean corpuscular hemoglobin, MCH (pg).",
+  "LBXMC":    "Mean corpuscular hemoglobin concentration, MCHC (g/dL).",
+  "LBXRDW":   "Red cell distribution width (%).",
+  "LBXPLTSI": "Platelet count (×10⁹/L).",
+  "LBXMPSI":  "Mean platelet volume, MPV (fL).",
+
+  # Inflammation / glycemia / cardiac
+  "LBXCRP": "C-reactive protein (mg/L).",
+  "LBXGH":  "Glycohemoglobin (HbA1c, %).",
+  "SSBNP":  "N-terminal pro-B-type natriuretic peptide (NT-proBNP, pg/mL).",
+
+  # Basic chem (SI set)
+  "LBDSALSI": "Albumin (g/L).",
+  "LBXSATSI": "Alanine aminotransferase, ALT (U/L).",
+  "LBXSASSI": "Aspartate aminotransferase, AST (U/L).",
+  "LBXSAPSI": "Alkaline phosphatase (U/L).",
+  "LBDSBUSI": "Urea nitrogen (BUN), SI (mmol/L).",
+  "LBDSCASI": "Calcium, SI (mmol/L).",
+  "LBXSC3SI": "Bicarbonate (total CO₂), SI (mmol/L).",
+  "LBDSGLSI": "Glucose, SI (mmol/L).",
+  "LBXSLDSI": "Lactate dehydrogenase, LDH (U/L).",
+  "LBDSPHSI": "Phosphorus (mmol/L).",
+  "LBDSTBSI": "Total bilirubin (µmol/L).",
+  "LBDSTPSI": "Total protein (g/L).",
+  "LBDSUASI": "Uric acid (µmol/L).",
+  "LBDSCRSI": "Creatinine (µmol/L).",
+  "LBXSNASI": "Sodium (mmol/L).",
+  "LBXSKSI": "Potassium (mmol/L).",
+  "LBXSCLSI": "Chloride (mmol/L).",
+  "LBDSGBSI": "Globulin (g/L).",
+
+  # Derived / study-specific
+  "fs1Score": "Comorbidity/Frailty index.",
+  "fs2Score": "Self-rated health × trajectory.",
+  "fs3Score": "Healthcare use (past year).",
+  "LDLV":     "Calculated LDL cholesterol (Friedewald or NHANES calc; mg/dL).",
+  "crAlbRat": "Urine albumin-to-creatinine ratio (UACR).",
+}
+
+
+
+def plot_feature_contribs_interactive_np(
+    Z_centered: np.ndarray,
+    w_feature_years: np.ndarray,
+    raw_features: pd.DataFrame,
+    feature_names: list[str],
+    subject_idx: int = 0,
+    title: str | None = None,
+    term_age: float | None = None,
+    descriptions: dict | pd.Series | None = None,
+):
+    """
+    Z_centered : np.ndarray (n_samples × n_features)
+    w_feature_years : np.ndarray (n_features,)
+    feature_names : list of feature codes (len = n_features)
+    descriptions : dict or pd.Series mapping feature -> human-readable text
+    """
+    dfZ = pd.DataFrame(Z_centered, columns=feature_names)
+    w = pd.Series(np.asarray(w_feature_years), index=feature_names, name="w_years_per_SD")
+    row = dfZ.iloc[subject_idx]
+
+    # construct plotting dataframe
+    plot_df = pd.DataFrame({
+        "feature": feature_names,
+        "description": [descriptions.get(f, f) for f in feature_names] if descriptions is not None else feature_names,
+        "z_centered": row.values,
+        "w_years_per_SD": w.values,
+        "contribution_years": (row.values * w.values)/12,
+        "lab_values": raw_features[feature_names].iloc[subject_idx].values
+    }).sort_values("contribution_years")
+
+    color_continuous_scale=[(0, "blue"), (0.5, "white"), (1, "red")],
+    range_color=[plot_df["contribution_years"].min(),
+                 plot_df["contribution_years"].max()]
+
+    vals = plot_df["contribution_years"]
+    m = float(np.nanquantile(np.abs(vals), 0.9))
+    
+    # color scale: red→blue (aging/de-aging)
+    fig = px.bar(
+        plot_df,
+        x="contribution_years",
+        y="feature",
+        orientation="h",
+        title=title or f"Feature contributions for subject #{subject_idx}",
+        
+        color="contribution_years",
+        color_continuous_scale="RdBu_r",         # blue for negative, red for positive
+        range_color=[-m, m],                     # <-- symmetric
+        color_continuous_midpoint=0,
+        hover_data=["description", "z_centered", "w_years_per_SD", "contribution_years"],
+         width=1600, height=800
+    )
+
+    # nice hover tooltip template
+    fig.update_traces(
+        customdata=plot_df[["description","lab_values","z_centered","w_years_per_SD"]].values,
+        hovertemplate=(
+            "<b>%{y}</b><br>%{customdata[0]}<br>"
+            "user input: %{customdata[1]}<br>"
+            "z (centered): %{customdata[2]:.3f}<br>"
+            "weight (yrs/SD): %{customdata[3]:.3f}<br>"
+            "contrib (yrs): %{x:.3f}<extra></extra>"
+        )
+    )
+
+    if term_age is not None:
+        fig.add_vline(x=float(term_age)/12, line_dash="dash", line_color="black", annotation_text="Age term")
+
+    fig.update_layout(yaxis=dict(dtick=1))
+    return fig
+
+
 
 # === fs-score calculators (mirror your functions) ===
 def fs1Score_from_df(q: pd.DataFrame) -> pd.Series:
@@ -163,7 +368,7 @@ def build_questionnaire_ui():
             PFQ056 = _radio(CODEBOOK["PFQ056"]["label"], CODEBOOK["PFQ056"]["choices"], CODEBOOK["PFQ056"]["value"])
             HUQ070 = _radio(CODEBOOK["HUQ070"]["label"], CODEBOOK["HUQ070"]["choices"], CODEBOOK["HUQ070"]["value"])
 
-        submit = gr.Button("Compute fs1/fs2/fs3")
+        submit = gr.Button("Compute biological age")
 
     # return all components to wire in .click
     return {
@@ -211,9 +416,8 @@ def launch_form():
                 lab_comps = build_lab_sliders()      # dict: code -> gr.Slider
 
         # --- Outputs (add an optional labs echo if you want) ---
-        out_df = gr.Dataframe(label="Questionnaire row (+ optional labs)", interactive=False)
-        out_fs = gr.JSON(label="fs-scores")
-        out_labs = gr.JSON(label="Labs (ordered dict)", visible=False)  # flip to True to debug
+        #fig_html = gr.HTML(label="LinAge2 interactive figure")
+        fig_html = gr.Plot(label="LinAge2 interactive figure") 
 
         # Build stable input lists so the click wiring is explicit
         # (avoid relying on dict iteration order)
@@ -231,42 +435,146 @@ def launch_form():
 
             # 1) Questionnaire → DataFrame row (your original behavior)
             inp_map = {k: v for k, v in zip(q_keys_in_order, q_vals)}
-            df = _collect_values(inp_map)  # must return a 1-row DataFrame or Series compatible with your scoring
+            qDataMat_user = _collect_values(inp_map)  # must return a 1-row DataFrame or Series compatible with your scoring
 
             # 2) Optional: attach labs to df (prefixed) so you can persist or feed into inference together
-            lab_dict = dict(zip(LAB_VARIABLES, lab_vals))
-            if isinstance(df, pd.DataFrame):
-                for k, v in lab_dict.items():
-                    df[f"lab__{k}"] = v
-            else:
-                # if _collect_values returns a Series, coerce to DataFrame
-                df = pd.DataFrame([df.to_dict()])
-                for k, v in lab_dict.items():
-                    df[f"lab__{k}"] = v
+            dataMat_user = pd.DataFrame.from_dict(dict(zip(LAB_VARIABLES, [[x] for x in lab_vals])))
+            dataMat_user['SEQN'] = qDataMat_user['SEQN']
 
-            # 3) Compute fs-scores (as before) from questionnaire-only columns
-            fs1 = fs1Score_from_df(df)
-            fs2 = fs2Score_from_df(df)
-            fs3 = fs3Score_from_df(df)
-            scores = {
-                "fs1Score": float(fs1.iloc[0]),
-                "fs2Score": float(fs2.iloc[0]),
-                "fs3Score": float(fs3.iloc[0]),
-            }
+            if useDerived:
+                print("> Populating derived features ... ", end="")
+                print(" fs scores ...", end="")
+                
+                ######### FS scores
+                ## NHANES DATA
+                fs1Score = popPCFIfs1(qDataMat)
+                fs2Score = popPCFIfs2(qDataMat)
+                fs3Score = popPCFIfs3(qDataMat)
+                dataMat['fs1Score'] = fs1Score
+                dataMat['fs2Score'] = fs2Score
+                dataMat['fs3Score'] = fs3Score
+                
+                ## USER DATA
+                fs1Score = popPCFIfs1(qDataMat_user)
+                fs2Score = popPCFIfs2(qDataMat_user)
+                fs3Score = popPCFIfs3(qDataMat_user)
+                dataMat_user['fs1Score'] = fs1Score
+                dataMat_user['fs2Score'] = fs2Score
+                dataMat_user['fs3Score'] = fs3Score
+                
+                ######### LDL scores
+                ## LDL values
+                print(" LDLV ...", end="")
+                LDLV = populateLDL(dataMat, qDataMat)
+                dataMat['LDLV'] = LDLV
+                
+                ## USER DATA
+                LDLV = populateLDL(dataMat_user, qDataMat_user)
+                dataMat_user['LDLV'] = LDLV
+                
+                ######### Urine albumin to creatinine ratio
+                ## Urine Albumin Creatinine ratio
+                print(" Albumin Creatinine ratio ... ", end="")
+                creaVals = dataMat["URXUCRSI"].values
+                albuVals = dataMat["URXUMASI"].values
+                crAlbRat = albuVals / (creaVals * 1.1312 * 10**-4)
+                dataMat['crAlbRat'] = crAlbRat
+                
+                ## USER DATA
+                creaVals = dataMat_user["URXUCRSI"].values
+                albuVals = dataMat_user["URXUMASI"].values
+                crAlbRat = albuVals / (creaVals * 1.1312 * 10**-4)
+                dataMat_user['crAlbRat'] = crAlbRat
 
-            # 4) Display
-            show = df.copy()
-            show["fs1Score"] = scores["fs1Score"]
-            show["fs2Score"] = scores["fs2Score"]
-            show["fs3Score"] = scores["fs3Score"]
+            sex_user = qDataMat_user["RIAGENDR"].values
+            initAge_user = qDataMat_user["RIDAGEEX"].values
 
-            return show, scores, lab_dict  # lab_dict is just for debugging/inspection
+            dataMat_trans_user = boxCoxTransform(boxCox_lam, dataMat_user)
+            dataMatNorm_user = normAsZscores_99_young_mf(dataMat_trans_user.drop(['LBDTCSI', 'LBDHDLSI', 'LBDSTRSI'], axis=1),
+                                                         qDataMat_user, dataMat_trans, qDataMat)
+
+            zScoreMax = 6
+
+            dataMatUser_folded = foldOutliers(dataMatNorm_user, zScoreMax)
+            
+            inputMat_user = dataMatUser_folded.iloc[:, 1:].values
+            
+            
+            sexSel_user = qDataMat_user["RIAGENDR"].values
+            
+            inputMat_user_M = inputMat_user[sexSel_user == 1, :]
+            inputMat_user_F = inputMat_user[sexSel_user == 2, :]
+            
+            
+            
+            
+            pcMat_user_M = projectToSVD(inputMat_user_M, vMatDat99_M)
+            pcMat_user_F = projectToSVD(inputMat_user_F, vMatDat99_F)
+            
+            
+            rowsAll_user = pcMat_user_M.shape[0] + pcMat_user_F.shape[0]
+            colsAll = nSVs99_M = 59
+            
+            pcMat_user = np.zeros((rowsAll_user, colsAll))
+            
+            
+            
+            pcMat_user[sexSel_user == 1, :] = pcMat_user_M
+            pcMat_user[sexSel_user == 2, :] = pcMat_user_F
+            pcMat_user = pd.DataFrame(pcMat_user, columns=[f"PC{i+1}" for i in range(nSVs99_M)])
+            
+            coxCovs_user = np.column_stack([initAge_user, pcMat_user.values, sex_user])
+            coxCovs_user = pd.DataFrame(coxCovs_user, columns=['chronAge'] + list(pcMat_user.columns) + ['sex_user'])
+            
+            ## Split back into male / female to apply separate models
+            coxCovs_user_M = coxCovs_user[sex_user == 1]
+            coxCovs_user_F = coxCovs_user[sex_user == 2]
+
+            pc_indices = [int(x[2:])-1 for x in coxModelM.feature_names_in_ if 'PC' in x]
+
+            beta_full = np.zeros(59)
+            beta_full[pc_indices] = coxModelM.coef_[1:]
+            beta_age_null = nullModelM.coef_[0]
+            
+            beta_age_full = coxModelM.coef_[0]
+            
+            w_feature_years = (vMatDat99_M @ beta_full)/beta_age_null
+            
+            w_age = (beta_age_full / beta_age_null) - 1.0
+
+
+
+            mu_PC = np.zeros(59)
+            mu_PC[pc_indices] = coxCovsTrainM.mean().loc[coxModelM.feature_names_in_].iloc[1:].values
+            mu_age = coxCovsTrainM['chronAge'].mean()
+            
+            mu_Z = mu_PC@vMatDat99_M.T
+            
+            Z_centered = inputMat_user_M - mu_Z      # shape (n_samples, n_features)
+            term_features = (Z_centered @ w_feature_years)
+            term_age = (initAge_user - mu_age) * w_age
+
+            subject_idx=0
+
+            fig = plot_feature_contribs_interactive_np(
+            Z_centered,
+            w_feature_years,
+            dataMat_user,
+            feature_names,
+            subject_idx=subject_idx,
+            title="LinAge2 (M) — feature contributions",
+            term_age=float(term_age[subject_idx]) if hasattr(term_age, "__getitem__") else term_age,
+            descriptions=nhanes_desc
+            )
+            html = pio.to_html(fig, include_plotlyjs="cdn", full_html=False)
+
+            return fig  # lab_dict is just for debugging/inspection
 
         # Wire the click with explicit ordering of inputs
         q_comps["submit"].click(
             on_submit,
             inputs=q_inputs_in_order + lab_inputs_in_order,
-            outputs=[out_df, out_fs, out_labs],
+            outputs=fig_html,
         )
 
     return demo
