@@ -416,7 +416,8 @@ def launch_form():
                 lab_comps = build_lab_sliders()      # dict: code -> gr.Slider
 
         # --- Outputs (add an optional labs echo if you want) ---
-        #fig_html = gr.HTML(label="LinAge2 interactive figure")
+
+        summary_box = gr.Markdown(label="Age summary (Biological vs Chronological)")
         fig_html = gr.Plot(label="LinAge2 interactive figure") 
 
         # Build stable input lists so the click wiring is explicit
@@ -439,7 +440,7 @@ def launch_form():
 
             # 2) Optional: attach labs to df (prefixed) so you can persist or feed into inference together
             dataMat_user = pd.DataFrame.from_dict(dict(zip(LAB_VARIABLES, [[x] for x in lab_vals])))
-            dataMat_user['SEQN'] = qDataMat_user['SEQN']
+            dataMat_user.insert(0, 'SEQN', qDataMat_user['SEQN'])
 
             if useDerived:
                 print("> Populating derived features ... ", end="")
@@ -489,9 +490,14 @@ def launch_form():
             sex_user = qDataMat_user["RIAGENDR"].values
             initAge_user = qDataMat_user["RIDAGEEX"].values
 
+            dataMat_user.to_csv('dataMat_user_app.csv')
+            
             dataMat_trans_user = boxCoxTransform(boxCox_lam, dataMat_user)
+            dataMat_trans_user.to_csv('dataMat_trans_user_app.csv')
+            qDataMat_R = pd.read_csv('qDataMat_R.csv')
             dataMatNorm_user = normAsZscores_99_young_mf(dataMat_trans_user.drop(['LBDTCSI', 'LBDHDLSI', 'LBDSTRSI'], axis=1),
-                                                         qDataMat_user, dataMat_trans, qDataMat)
+                                                         qDataMat_user, dataMat_trans, qDataMat_R)
+            dataMatNorm_user.to_csv('dataMatNorm_user_app.csv')
 
             zScoreMax = 6
 
@@ -505,8 +511,7 @@ def launch_form():
             inputMat_user_M = inputMat_user[sexSel_user == 1, :]
             inputMat_user_F = inputMat_user[sexSel_user == 2, :]
             
-            
-            
+        
             
             pcMat_user_M = projectToSVD(inputMat_user_M, vMatDat99_M)
             pcMat_user_F = projectToSVD(inputMat_user_F, vMatDat99_F)
@@ -522,6 +527,8 @@ def launch_form():
             pcMat_user[sexSel_user == 1, :] = pcMat_user_M
             pcMat_user[sexSel_user == 2, :] = pcMat_user_F
             pcMat_user = pd.DataFrame(pcMat_user, columns=[f"PC{i+1}" for i in range(nSVs99_M)])
+
+            pcMat_user.to_csv('pcMat_user_app.csv')
             
             coxCovs_user = np.column_stack([initAge_user, pcMat_user.values, sex_user])
             coxCovs_user = pd.DataFrame(coxCovs_user, columns=['chronAge'] + list(pcMat_user.columns) + ['sex_user'])
@@ -529,6 +536,8 @@ def launch_form():
             ## Split back into male / female to apply separate models
             coxCovs_user_M = coxCovs_user[sex_user == 1]
             coxCovs_user_F = coxCovs_user[sex_user == 2]
+
+            coxCovs_user_M.to_csv('coxCovs_user_M_app.csv')
 
             pc_indices = [int(x[2:])-1 for x in coxModelM.feature_names_in_ if 'PC' in x]
 
@@ -556,6 +565,21 @@ def launch_form():
 
             subject_idx=0
 
+            delta_BA_years = (term_features + term_age)/12
+            bio_age = initAge_user + delta_BA_years
+            
+            subject_idx = 0
+            chron = float(initAge_user[subject_idx])
+            bio = float(bio_age[subject_idx])
+            delta = float(delta_BA_years[subject_idx])
+            
+            summary_md = (
+                f"### 🧬 Biological Age Summary\n"
+                f"- **Chronological age:** {chron:.1f} y\n"
+                f"- **Predicted biological age:** {bio:.1f} y\n"
+                f"- **Δ (BA – CA):** {delta:+.1f} y"
+            )
+
             fig = plot_feature_contribs_interactive_np(
             Z_centered,
             w_feature_years,
@@ -563,18 +587,18 @@ def launch_form():
             feature_names,
             subject_idx=subject_idx,
             title="LinAge2 (M) — feature contributions",
-            term_age=float(term_age[subject_idx]) if hasattr(term_age, "__getitem__") else term_age,
+            term_age=float(term_age[subject_idx])/12 if hasattr(term_age, "__getitem__") else term_age/12,
             descriptions=nhanes_desc
             )
             html = pio.to_html(fig, include_plotlyjs="cdn", full_html=False)
 
-            return fig  # lab_dict is just for debugging/inspection
+            return fig, summary_md  # lab_dict is just for debugging/inspection
 
         # Wire the click with explicit ordering of inputs
         q_comps["submit"].click(
             on_submit,
             inputs=q_inputs_in_order + lab_inputs_in_order,
-            outputs=fig_html,
+            outputs=[fig_html, summary_box],
         )
 
     return demo
