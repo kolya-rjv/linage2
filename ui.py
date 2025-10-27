@@ -490,14 +490,13 @@ def launch_form():
             sex_user = qDataMat_user["RIAGENDR"].values
             initAge_user = qDataMat_user["RIDAGEEX"].values
 
-            dataMat_user.to_csv('dataMat_user_app.csv')
+
             
             dataMat_trans_user = boxCoxTransform(boxCox_lam, dataMat_user)
-            dataMat_trans_user.to_csv('dataMat_trans_user_app.csv')
+
             qDataMat_R = pd.read_csv('qDataMat_R.csv')
             dataMatNorm_user = normAsZscores_99_young_mf(dataMat_trans_user.drop(['LBDTCSI', 'LBDHDLSI', 'LBDSTRSI'], axis=1),
                                                          qDataMat_user, dataMat_trans, qDataMat_R)
-            dataMatNorm_user.to_csv('dataMatNorm_user_app.csv')
 
             zScoreMax = 6
 
@@ -527,8 +526,6 @@ def launch_form():
             pcMat_user[sexSel_user == 1, :] = pcMat_user_M
             pcMat_user[sexSel_user == 2, :] = pcMat_user_F
             pcMat_user = pd.DataFrame(pcMat_user, columns=[f"PC{i+1}" for i in range(nSVs99_M)])
-
-            pcMat_user.to_csv('pcMat_user_app.csv')
             
             coxCovs_user = np.column_stack([initAge_user, pcMat_user.values, sex_user])
             coxCovs_user = pd.DataFrame(coxCovs_user, columns=['chronAge'] + list(pcMat_user.columns) + ['sex_user'])
@@ -536,8 +533,6 @@ def launch_form():
             ## Split back into male / female to apply separate models
             coxCovs_user_M = coxCovs_user[sex_user == 1]
             coxCovs_user_F = coxCovs_user[sex_user == 2]
-
-            coxCovs_user_M.to_csv('coxCovs_user_M_app.csv')
 
             pc_indices = [int(x[2:])-1 for x in coxModelM.feature_names_in_ if 'PC' in x]
 
