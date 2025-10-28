@@ -318,7 +318,7 @@ def _radio_value(radio_value, choices):
 
 def build_questionnaire_ui():
     with gr.Column():
-        with gr.Accordion("Demographics (optional)", open=False):
+        with gr.Accordion("Demographics", open=True):
             inp_seqn = gr.Number(label=CODEBOOK["SEQN"]["label"], value=CODEBOOK["SEQN"]["value"], precision=0)
             inp_sex  = _radio(CODEBOOK["RIAGENDR"]["label"], CODEBOOK["RIAGENDR"]["choices"], CODEBOOK["RIAGENDR"]["value"])
             inp_age  = gr.Number(label=CODEBOOK["RIDAGEEX"]["label"], value=CODEBOOK["RIDAGEEX"]["value"], precision=0)
@@ -534,27 +534,40 @@ def launch_form():
             coxCovs_user_M = coxCovs_user[sex_user == 1]
             coxCovs_user_F = coxCovs_user[sex_user == 2]
 
-            pc_indices = [int(x[2:])-1 for x in coxModelM.feature_names_in_ if 'PC' in x]
+            if sex_user==1:
+                coxModel = coxModelM
+                nullModel = nullModelM
+                vMatDat99 = vMatDat99_M
+                coxCovsTrain = coxCovsTrainM
+                inputMat_user = inputMat_user_M
+            elif sex_user==2:
+                coxModel = coxModelF
+                nullModel = nullModelF
+                vMatDat99 = vMatDat99_F
+                coxCovsTrain = coxCovsTrainF
+                inputMat_user = inputMat_user_F
+                
+            pc_indices = [int(x[2:])-1 for x in coxModel.feature_names_in_ if 'PC' in x]
 
             beta_full = np.zeros(59)
-            beta_full[pc_indices] = coxModelM.coef_[1:]
-            beta_age_null = nullModelM.coef_[0]
+            beta_full[pc_indices] = coxModel.coef_[1:]
+            beta_age_null = nullModel.coef_[0]
             
-            beta_age_full = coxModelM.coef_[0]
+            beta_age_full = coxModel.coef_[0]
             
-            w_feature_years = (vMatDat99_M @ beta_full)/beta_age_null
+            w_feature_years = (vMatDat99 @ beta_full)/beta_age_null
             
             w_age = (beta_age_full / beta_age_null) - 1.0
 
 
 
             mu_PC = np.zeros(59)
-            mu_PC[pc_indices] = coxCovsTrainM.mean().loc[coxModelM.feature_names_in_].iloc[1:].values
-            mu_age = coxCovsTrainM['chronAge'].mean()
+            mu_PC[pc_indices] = coxCovsTrain.mean().loc[coxModel.feature_names_in_].iloc[1:].values
+            mu_age = coxCovsTrain['chronAge'].mean()
             
-            mu_Z = mu_PC@vMatDat99_M.T
+            mu_Z = mu_PC@vMatDat99.T
             
-            Z_centered = inputMat_user_M - mu_Z      # shape (n_samples, n_features)
+            Z_centered = inputMat_user - mu_Z      # shape (n_samples, n_features)
             term_features = (Z_centered @ w_feature_years)
             term_age = (initAge_user - mu_age) * w_age
 
