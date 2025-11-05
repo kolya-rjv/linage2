@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.io as pio
 
 from src import *
-from ui_sliders import LAB_VARIABLES, build_lab_sliders
+from ui_sliders import LAB_VARIABLES, build_lab_sliders, nhanes_desc
 
 
 # === Codebook: label + choices (value codes match NHANES) ===
@@ -108,84 +108,6 @@ feature_names = ['BPXPLS', 'BPXSAR', 'BPXDAR', 'BMXBMI', 'URXUMASI', 'URXUCRSI',
        'LBDSCRSI', 'LBXSNASI', 'LBXSKSI', 'LBXSCLSI', 'LBDSGBSI', 'fs1Score',
        'fs2Score', 'fs3Score', 'LDLV', 'crAlbRat']
 
-nhanes_desc = {
-  # Vitals / anthropometry
-  "BPXPLS": "Pulse rate (beats/min, 60-sec pulse).",   # CDC BPX doc
-  "BPXSAR": "Systolic blood pressure — average reported to examinee (mmHg).",
-  "BPXDAR": "Diastolic blood pressure — average reported to examinee (mmHg).",
-  "BMXBMI": "Body mass index (kg/m²).",
-
-  # Kidney (urine)
-  "URXUMASI": "Urine albumin (microalbumin), SI units (e.g., mg/L→mg/L; often used for UACR).",
-  "URXUCRSI": "Urine creatinine, SI units (mmol/L).",
-
-  # Iron panel
-  "LBDIRNSI": "Serum iron (µmol/L).",
-  "LBDTIBSI": "Total iron binding capacity, TIBC (µmol/L).",
-  "LBXPCT":   "Transferrin saturation (%) = (serum iron / TIBC)×100.",
-  "LBDFERSI": "Ferritin (µg/L).",
-
-  # Folate / B12 / cotinine
-  "LBDFOLSI": "Serum folate (nmol/L).",
-  "LBDB12SI": "Vitamin B12 (pmol/L).",
-  "LBXCOT":   "Cotinine (ng/mL)—tobacco exposure marker.",
-
-  # CBC (white cells)
-  "LBXWBCSI": "White blood cell count (×10⁹/L).",
-  "LBXLYPCT": "Lymphocytes (%).",
-  "LBXMOPCT": "Monocytes (%).",
-  "LBXNEPCT": "Neutrophils (%).",
-  "LBXEOPCT": "Eosinophils (%).",
-  "LBXBAPCT": "Basophils (%).",
-  "LBDLYMNO": "Lymphocytes (×10⁹/L).",
-  "LBDMONO":  "Monocytes (×10⁹/L).",
-  "LBDNENO":  "Neutrophils (×10⁹/L).",
-  "LBDEONO":  "Eosinophils (×10⁹/L).",
-  "LBDBANO":  "Basophils (×10⁹/L).",
-
-  # CBC (red cells / platelets)
-  "LBXRBCSI": "Red blood cell count (×10¹²/L).",
-  "LBXHGB":   "Hemoglobin (g/dL).",
-  "LBXHCT":   "Hematocrit (%).",
-  "LBXMCVSI": "Mean corpuscular volume, MCV (fL).",
-  "LBXMCHSI": "Mean corpuscular hemoglobin, MCH (pg).",
-  "LBXMC":    "Mean corpuscular hemoglobin concentration, MCHC (g/dL).",
-  "LBXRDW":   "Red cell distribution width (%).",
-  "LBXPLTSI": "Platelet count (×10⁹/L).",
-  "LBXMPSI":  "Mean platelet volume, MPV (fL).",
-
-  # Inflammation / glycemia / cardiac
-  "LBXCRP": "C-reactive protein (mg/L).",
-  "LBXGH":  "Glycohemoglobin (HbA1c, %).",
-  "SSBNP":  "N-terminal pro-B-type natriuretic peptide (NT-proBNP, pg/mL).",
-
-  # Basic chem (SI set)
-  "LBDSALSI": "Albumin (g/L).",
-  "LBXSATSI": "Alanine aminotransferase, ALT (U/L).",
-  "LBXSASSI": "Aspartate aminotransferase, AST (U/L).",
-  "LBXSAPSI": "Alkaline phosphatase (U/L).",
-  "LBDSBUSI": "Urea nitrogen (BUN), SI (mmol/L).",
-  "LBDSCASI": "Calcium, SI (mmol/L).",
-  "LBXSC3SI": "Bicarbonate (total CO₂), SI (mmol/L).",
-  "LBDSGLSI": "Glucose, SI (mmol/L).",
-  "LBXSLDSI": "Lactate dehydrogenase, LDH (U/L).",
-  "LBDSPHSI": "Phosphorus (mmol/L).",
-  "LBDSTBSI": "Total bilirubin (µmol/L).",
-  "LBDSTPSI": "Total protein (g/L).",
-  "LBDSUASI": "Uric acid (µmol/L).",
-  "LBDSCRSI": "Creatinine (µmol/L).",
-  "LBXSNASI": "Sodium (mmol/L).",
-  "LBXSKSI": "Potassium (mmol/L).",
-  "LBXSCLSI": "Chloride (mmol/L).",
-  "LBDSGBSI": "Globulin (g/L).",
-
-  # Derived / study-specific
-  "fs1Score": "Comorbidity/Frailty index.",
-  "fs2Score": "Self-rated health × trajectory.",
-  "fs3Score": "Healthcare use (past year).",
-  "LDLV":     "Calculated LDL cholesterol (Friedewald or NHANES calc; mg/dL).",
-  "crAlbRat": "Urine albumin-to-creatinine ratio (UACR).",
-}
 
 
 
@@ -218,6 +140,8 @@ def plot_feature_contribs_interactive_np(
         "contribution_years": (row.values * w.values)/12,
         "lab_values": raw_features[feature_names].iloc[subject_idx].values
     }).sort_values("contribution_years")
+
+    delta_ba = (row.values * w.values).sum()/12+term_age
 
     color_continuous_scale=[(0, "blue"), (0.5, "white"), (1, "red")],
     range_color=[plot_df["contribution_years"].min(),
@@ -392,7 +316,7 @@ def _collect_values(inputs: dict):
     row = {}
     row["SEQN"] = int(inputs["SEQN"])
     row["RIAGENDR"] = dict(CODEBOOK["RIAGENDR"]["choices"])[inputs["RIAGENDR"]]
-    row["RIDAGEEX"] = int(inputs["RIDAGEEX"])
+    row["RIDAGEEX"] = int(inputs["RIDAGEEX"])*12 #age is in months in training data
 
     for k in [
         "BPQ020","DIQ010","KIQ020","MCQ010","MCQ053",
@@ -574,10 +498,11 @@ def launch_form():
             subject_idx=0
 
             delta_BA_years = (term_features + term_age)/12
-            bio_age = initAge_user + delta_BA_years
+            initAge_user_years = initAge_user/12
+            bio_age = initAge_user_years + delta_BA_years
             
             subject_idx = 0
-            chron = float(initAge_user[subject_idx])
+            chron = float(initAge_user_years[subject_idx])
             bio = float(bio_age[subject_idx])
             delta = float(delta_BA_years[subject_idx])
             
