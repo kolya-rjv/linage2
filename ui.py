@@ -292,7 +292,7 @@ def build_questionnaire_ui():
             PFQ056 = _radio(CODEBOOK["PFQ056"]["label"], CODEBOOK["PFQ056"]["choices"], CODEBOOK["PFQ056"]["value"])
             HUQ070 = _radio(CODEBOOK["HUQ070"]["label"], CODEBOOK["HUQ070"]["choices"], CODEBOOK["HUQ070"]["value"])
 
-        submit = gr.Button("Compute biological age")
+       
 
     # return all components to wire in .click
     return {
@@ -307,8 +307,7 @@ def build_questionnaire_ui():
         "MCQ160A": MCQ160A, "MCQ160B": MCQ160B, "MCQ160C": MCQ160C, "MCQ160D": MCQ160D, "MCQ160E": MCQ160E,
         "MCQ160F": MCQ160F, "MCQ160G": MCQ160G, "MCQ160I": MCQ160I, "MCQ160J": MCQ160J, "MCQ160K": MCQ160K, "MCQ160L": MCQ160L,
         "MCQ220": MCQ220, "OSQ010A": OSQ010A, "OSQ010B": OSQ010B, "OSQ010C": OSQ010C, "OSQ060": OSQ060,
-        "PFQ056": PFQ056, "HUQ070": HUQ070,
-        "submit": submit,
+        "PFQ056": PFQ056, "HUQ070": HUQ070
     }
 
 def _collect_values(inputs: dict):
@@ -541,9 +540,10 @@ def launch_form():
             html = pio.to_html(fig, include_plotlyjs="cdn", full_html=False)
 
             return fig, summary_md  # lab_dict is just for debugging/inspection
+        submit_btn = gr.Button("Compute biological age")
 
         # Wire the click with explicit ordering of inputs
-        q_comps["submit"].click(
+        submit_btn.click(
             on_submit,
             inputs=q_inputs_in_order + lab_sliders_in_order + lab_flags_in_order,
             outputs=[fig_html, summary_box],
