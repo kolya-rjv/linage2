@@ -348,15 +348,32 @@ def launch_form():
         # (avoid relying on dict iteration order)
         q_keys_in_order = [k for k in q_comps.keys() if k != "submit"]
         q_inputs_in_order = [q_comps[k] for k in q_keys_in_order]
-        lab_inputs_in_order = [lab_comps[c] for c in LAB_VARIABLES]
+        
+        lab_sliders_in_order = [lab_comps[c]["slider"] for c in LAB_VARIABLES]
+        lab_flags_in_order   = [lab_comps[c]["missing"] for c in LAB_VARIABLES]
+
+
+        def impute_missing_values(values, flags):
+            return [val if not flag else 999 for (val, flag) in zip(values, flags)] 
+        
+        lab_inputs_in_order = impute_missing_values(lab_sliders_in_order, lab_flags_in_order)
 
         def on_submit(*vals):
             """
             vals = [questionnaire..., labs...], in the order we passed to `inputs=...`.
             """
             n_q = len(q_inputs_in_order)
+            n_lab = len(LAB_VARIABLES)
             q_vals = vals[:n_q]
-            lab_vals = vals[n_q:]  # len == len(LAB_VARIABLES)
+            raw_lab_vals = vals[n_q:-n_lab]  # len == len(LAB_VARIABLES)
+            flag_vals = vals[-n_lab:]
+
+            lab_vals = impute_missing_values(raw_lab_vals, flag_vals)
+            print(lab_vals)
+
+            
+            gr.Warning(f"{sum(flag_vals)} lab measurements were imputed")
+            
 
             # 1) Questionnaire → DataFrame row (your original behavior)
             inp_map = {k: v for k, v in zip(q_keys_in_order, q_vals)}
@@ -367,8 +384,6 @@ def launch_form():
             dataMat_user.insert(0, 'SEQN', qDataMat_user['SEQN'])
 
             if useDerived:
-                print("> Populating derived features ... ", end="")
-                print(" fs scores ...", end="")
                 
                 ######### FS scores
                 ## NHANES DATA
@@ -530,7 +545,7 @@ def launch_form():
         # Wire the click with explicit ordering of inputs
         q_comps["submit"].click(
             on_submit,
-            inputs=q_inputs_in_order + lab_inputs_in_order,
+            inputs=q_inputs_in_order + lab_sliders_in_order + lab_flags_in_order,
             outputs=[fig_html, summary_box],
         )
 
