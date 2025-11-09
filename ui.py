@@ -252,10 +252,10 @@ def build_questionnaire_ui():
             HUQ010 = _radio(CODEBOOK["HUQ010"]["label"], CODEBOOK["HUQ010"]["choices"], CODEBOOK["HUQ010"]["value"])
             HUQ020 = _radio(CODEBOOK["HUQ020"]["label"], CODEBOOK["HUQ020"]["choices"], CODEBOOK["HUQ020"]["value"])
 
-        with gr.Accordion("Healthcare use (fs3Score)", open=False):
+        with gr.Accordion("Healthcare use (fs3Score)", open=True):
             HUQ050 = gr.Number(label=CODEBOOK["HUQ050"]["label"], value=CODEBOOK["HUQ050"]["value"], precision=0)
 
-        with gr.Accordion("Conditions & limitations (fs1Score)", open=False):
+        with gr.Accordion("Conditions & limitations (fs1Score)", open=True):
             radios_fs1 = {}
             for k in [
                 "BPQ020","DIQ010","KIQ020","MCQ010","MCQ053",

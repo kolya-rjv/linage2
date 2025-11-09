@@ -114,7 +114,7 @@ def patch_lab_defaults(LAB_RANGES, sample_dict):
         new_ranges[var] = (mn, mx, step, val, label)
     return new_ranges
 
-#LAB_RANGES = patch_lab_defaults(LAB_RANGES, sample8881)
+LAB_RANGES = patch_lab_defaults(LAB_RANGES, sample8881)
 
 def lab_slider_for(code):
     lo, hi, step, default, label = LAB_RANGES[code]
@@ -133,7 +133,7 @@ def lab_slider_for(code):
 
 def build_lab_sliders():
     comps = {}
-    with gr.Accordion("Lab Inputs (NHANES codes)", open=False):
+    with gr.Accordion("Lab Inputs (NHANES codes)", open=True):
         # bulk controls
         with gr.Row():
             btn_all_missing = gr.Button(value="Mark all Missing")
