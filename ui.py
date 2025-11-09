@@ -8,6 +8,7 @@ import plotly.io as pio
 
 from src import *
 from ui_sliders import LAB_VARIABLES, build_lab_sliders, nhanes_desc
+from imputation import impute_missing_values
 
 
 # === Codebook: label + choices (value codes match NHANES) ===
@@ -345,17 +346,13 @@ def launch_form():
 
         # Build stable input lists so the click wiring is explicit
         # (avoid relying on dict iteration order)
-        q_keys_in_order = [k for k in q_comps.keys() if k != "submit"]
+        q_keys_in_order = [k for k in q_comps.keys()]
         q_inputs_in_order = [q_comps[k] for k in q_keys_in_order]
         
         lab_sliders_in_order = [lab_comps[c]["slider"] for c in LAB_VARIABLES]
         lab_flags_in_order   = [lab_comps[c]["missing"] for c in LAB_VARIABLES]
 
 
-        def impute_missing_values(values, flags):
-            return [val if not flag else 999 for (val, flag) in zip(values, flags)] 
-        
-        lab_inputs_in_order = impute_missing_values(lab_sliders_in_order, lab_flags_in_order)
 
         def on_submit(*vals):
             """
@@ -367,9 +364,6 @@ def launch_form():
             raw_lab_vals = vals[n_q:-n_lab]  # len == len(LAB_VARIABLES)
             flag_vals = vals[-n_lab:]
 
-            lab_vals = impute_missing_values(raw_lab_vals, flag_vals)
-            print(lab_vals)
-
             
             gr.Warning(f"{sum(flag_vals)} lab measurements were imputed")
             
@@ -377,6 +371,15 @@ def launch_form():
             # 1) Questionnaire → DataFrame row (your original behavior)
             inp_map = {k: v for k, v in zip(q_keys_in_order, q_vals)}
             qDataMat_user = _collect_values(inp_map)  # must return a 1-row DataFrame or Series compatible with your scoring
+
+
+            sex = qDataMat_user.iloc[0]['RIAGENDR']
+
+            age = qDataMat_user.iloc[0]['RIDAGEEX']
+
+
+            lab_vals = impute_missing_values(raw_lab_vals, flag_vals, sex, age)
+
 
             # 2) Optional: attach labs to df (prefixed) so you can persist or feed into inference together
             dataMat_user = pd.DataFrame.from_dict(dict(zip(LAB_VARIABLES, [[x] for x in lab_vals])))
