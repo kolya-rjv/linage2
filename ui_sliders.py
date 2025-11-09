@@ -118,19 +118,64 @@ def patch_lab_defaults(LAB_RANGES, sample_dict):
 
 def lab_slider_for(code):
     lo, hi, step, default, label = LAB_RANGES[code]
-    return gr.Slider(minimum=lo, maximum=hi, step=step, value=default, label=f"{nhanes_desc.get(label, '')}({label})")
+    # row: [Slider | Missing □]
+    with gr.Row():
+        sld = gr.Slider(
+            minimum=lo, maximum=hi, step=step, value=default,
+            label=f"{nhanes_desc.get(label, '')} ({label})", interactive=False
+        )
+        chk = gr.Checkbox(label="Missing", value=True, scale=0)  # default missing=True
+    # when Missing is checked -> disable slider
+    def _toggle(missing):
+        return gr.update(interactive=not missing)
+    chk.change(_toggle, inputs=chk, outputs=sld)
+    return sld, chk
 
 def build_lab_sliders():
     comps = {}
     with gr.Accordion("Lab Inputs (NHANES codes)", open=False):
+        # bulk controls
+        with gr.Row():
+            btn_all_missing = gr.Button(value="Mark all Missing")
+            btn_all_known   = gr.Button(value="Mark all Known")
         cols = [gr.Column(), gr.Column(), gr.Column()]
+        missing_boxes = []
+        sliders = []
         for i, code in enumerate(LAB_VARIABLES):
             with cols[i % 3]:
-                comps[code] = lab_slider_for(code)
+                sld, chk = lab_slider_for(code)
+                comps[code] = {"slider": sld, "missing": chk}
+                sliders.append(sld)
+                missing_boxes.append(chk)
+        # wire bulk buttons
+        def _set_all_missing(_):
+            return [gr.update(value=True) for _ in missing_boxes] + \
+                   [gr.update(interactive=False) for _ in sliders]
+        def _set_all_known(_):
+            return [gr.update(value=False) for _ in missing_boxes] + \
+                   [gr.update(interactive=True) for _ in sliders]
+        btn_all_missing.click(_set_all_missing, inputs=[], outputs=missing_boxes + sliders)
+        btn_all_known.click(_set_all_known, inputs=[], outputs=missing_boxes + sliders)
     return comps
 
 def read_lab_values(components_dict):
-    return [components_dict[c].value if hasattr(components_dict[c], 'value') else None for c in LAB_VARIABLES]
+    vals = []
+    for code in LAB_VARIABLES:
+        sld = components_dict[code]["slider"]
+        miss = components_dict[code]["missing"].value
+
+        if miss:
+            vals.append(999)
+            continue
+
+        v = sld.value
+        # Fail fast if UI violated the contract
+        assert v is not None, f"{code}: slider has no value when marked known"
+        try:
+            vals.append(float(v))
+        except (TypeError, ValueError):
+            raise ValueError(f"{code}: expected numeric slider value, got {v!r}")
+    return vals
 
 if __name__ == '__main__':
     with gr.Blocks(title="LinAge2 — Lab Inputs") as demo:
